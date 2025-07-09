@@ -50,13 +50,6 @@
             color: #9ca3af;
             margin-top: 0.25rem;
         }
-        .copy-button, .regenerate-button {
-            opacity: 0;
-            transition: opacity 0.2s;
-        }
-        .message:hover .copy-button, .message:hover .regenerate-button {
-            opacity: 1;
-        }
         @keyframes fadeIn {
             from { opacity: 0; transform: translateY(10px); }
             to { opacity: 1; transform: translateY(0); }
@@ -151,6 +144,7 @@
             const toast = document.getElementById("toast");
             toast.textContent = message;
             toast.className = `text-sm ${isError ? "error" : ""}`;
+            toast.style.backgroundColor = isError ? "#ef4444" : "#10b981";
             toast.style.display = "block";
             setTimeout(() => {
                 toast.style.display = "none";
@@ -158,49 +152,20 @@
         }
 
         function escapeHtml(text) {
-            return text.replace(/'/g, "\\'").replace(/"/g, '\\"');
+            return text.replace(/</g, "&lt;").replace(/>/g, "&gt;");
         }
 
-        function addMessageToChat(text, isUser, timestamp, canRegenerate = false) {
+        function addMessageToChat(text, isUser, timestamp) {
             const chatContainer = document.getElementById("chat");
             const messageDiv = document.createElement("div");
             messageDiv.className = `message ${isUser ? "user-message" : "ai-message"}`;
-            const cleanText = text.replace(/</g, "<").replace(/>/g, ">"); // Prevent XSS
+            const cleanText = escapeHtml(text); // Prevent XSS
             messageDiv.innerHTML = `
-ратно
                 <div>${isUser ? cleanText : renderMarkdown(cleanText)}</div>
                 <div class="timestamp">${timestamp}</div>
-                <button class="copy-button absolute top-2 right-2 text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300" onclick="copyToClipboard('${escapeHtml(cleanText)}')">Copy</button>
-                ${canRegenerate ? `<button class="regenerate-button absolute top-2 right-16 text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300" onclick="regenerateResponse('${escapeHtml(cleanText)}')">Regenerate</button>` : ""}
             `;
             chatContainer.appendChild(messageDiv);
             document.getElementById("chat-container").scrollTop = document.getElementById("chat-container").scrollHeight;
-        }
-
-        function copyToClipboard(text) {
-            // Primary method: Clipboard API
-            if (navigator.clipboard && window.isSecureContext) {
-                navigator.clipboard.writeText(text).then(() => {
-                    showToast("Copied to clipboard!");
-                }).catch(err => {
-                    showToast("Failed to copy: " + err.message, true);
-                    console.error("Clipboard API error:", err);
-                });
-            } else {
-                // Fallback: document.execCommand
-                const textarea = document.createElement("textarea");
-                textarea.value = text;
-                document.body.appendChild(textarea);
-                textarea.select();
-                try {
-                    document.execCommand("copy");
-                    showToast("Copied to clipboard!");
-                } catch (err) {
-                    showToast("Failed to copy: " + err.message, true);
-                    console.error("Fallback copy error:", err);
-                }
-                document.body.removeChild(textarea);
-            }
         }
 
         function saveConversation() {
@@ -208,13 +173,14 @@
                 localStorage.setItem("chatHistory", JSON.stringify(conversationHistory));
             } catch (err) {
                 console.error("Failed to save conversation:", err);
+                showToast("Failed to save conversation.", true);
             }
         }
 
         function loadConversation() {
             try {
                 conversationHistory.forEach(msg => {
-                    addMessageToChat(msg.text, msg.isUser, msg.timestamp, !msg.isUser);
+                    addMessageToChat(msg.text, msg.isUser, msg.timestamp);
                 });
             } catch (err) {
                 console.error("Failed to load conversation:", err);
@@ -224,7 +190,6 @@
 
         async function askQuestion(question = null) {
             const questionInput = document.getElementById("question-input");
-            const chatContainer = document.getElementById("chat");
             const askButton = document.getElementById("ask-button");
             const typingIndicator = document.getElementById("typing-indicator");
             const userQuestion = question || questionInput.value.trim();
@@ -276,7 +241,7 @@
                 const aiResponse = data.candidates[0].content.parts[0].text;
 
                 // Add AI response to chat and history
-                addMessageToChat(aiResponse, false, formatTimestamp(), true);
+                addMessageToChat(aiResponse, false, formatTimestamp());
                 conversationHistory.push({ text: aiResponse, isUser: false, timestamp: formatTimestamp() });
                 saveConversation();
             } catch (error) {
@@ -293,20 +258,14 @@
             typingIndicator.classList.add("hidden");
         }
 
-        async function regenerateResponse(question) {
-            await askQuestion(question);
-        }
-
         function clearChat() {
             try {
-                if (confirm("Are you sure you want to clear the chat?")) {
-                    conversationHistory = [];
-                    localStorage.removeItem("chatHistory");
-                    document.getElementById("chat").innerHTML = "";
-                    addWelcomeMessage();
-                    showToast("Chat cleared successfully!");
-                    console.log("Chat cleared and welcome message added.");
-                }
+                conversationHistory = [];
+                localStorage.removeItem("chatHistory");
+                document.getElementById("chat").innerHTML = "";
+                addWelcomeMessage();
+                showToast("Chat cleared successfully!");
+                console.log("Chat cleared and welcome message added.");
             } catch (err) {
                 showToast("Failed to clear chat.", true);
                 console.error("Clear chat error:", err);
@@ -316,7 +275,7 @@
         function addWelcomeMessage() {
             const welcomeMessage = "Hi! I'm your Gemini AI assistant. Ask me anything, and I'll do my best to help!";
             addMessageToChat(welcomeMessage, false, formatTimestamp());
-            conversationHistory.push({ text: welcomeMessage, isUser: false, timestamp: formatTimestamp() });
+            conversationHistory = [{ text: welcomeMessage, isUser: false, timestamp: formatTimestamp() }];
             saveConversation();
         }
 
